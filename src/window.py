@@ -22,6 +22,7 @@ import subprocess
 import re
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
+from threading import Thread
 from .properties_window import PropertiesWindow
 from .filter_window import FilterWindow
 from .common import myUtils
@@ -274,14 +275,14 @@ class WarehouseWindow(Adw.ApplicationWindow):
 
     def create_row(self, index):
         row = AppRow(self, self.host_flatpaks, index)
-        self.flatpaks_list_box.insert(row, index)
+        # self.flatpaks_list_box.insert(row, index)
+        return row
     
     def generate_list_of_flatpaks(self):
         self.host_flatpaks = self.my_utils.getHostFlatpaks()
-        self.set_title(self.main_window_title)
-        self.flatpak_rows = []
-        self.should_select_all = self.batch_select_all_button.get_active()
-        self.batch_select_all_button.set_active(False)
+        # self.set_title(self.main_window_title)
+        # self.should_select_all = self.batch_select_all_button.get_active()
+        # self.batch_select_all_button.set_active(False)
         self.eol_list = []
         self.system_mask_list = self.my_utils.getHostMasks("system")
         self.user_mask_list = self.my_utils.getHostMasks("user")
@@ -293,19 +294,32 @@ class WarehouseWindow(Adw.ApplicationWindow):
             except:
                 print("Could not find EOL")
 
+        flatpak_rows = []
         for index in range(len(self.host_flatpaks)):
-            self.create_row(index)
+            row = self.create_row(index)
+            flatpak_rows.append(row)
+            # self.flatpaks_list_box.insert(row, index)
 
-        self.applyFilter()
+        for index in flatpak_rows:
+            GLib.idle_add(self.flatpaks_list_box.append, index)
+
+        # self.applyFilter()
 
         # self.windowSetEmpty(not self.flatpaks_list_box.get_row_at_index(0))
-        self.batchActionsEnable(False)
-        self.main_stack.set_visible_child(self.main_box)
+        # self.batchActionsEnable(False)
 
     def refresh_list_of_flatpaks(self, widget, should_toast):
         if self.currently_uninstalling:
             return
-        self.generate_list_of_flatpaks()
+
+        def thread():
+            GLib.idle_add(self.flatpaks_list_box.remove_all())
+            self.generate_list_of_flatpaks()
+        
+        self.main_stack.set_visible_child(self.loading_flatpaks)
+        a = Thread(target=thread, args=())
+        a.daemon = True
+        a.start()
 
     def openDataFolder(self, path):
         try:
@@ -538,64 +552,33 @@ class WarehouseWindow(Adw.ApplicationWindow):
         index = 0
         while(self.flatpaks_list_box.get_row_at_index(index) != None):
             current = self.flatpaks_list_box.get_row_at_index(index)
-            visible = True
+            index += 1
 
             if show_apps == False and current.is_runtime == False:
-                visible = False
+                current.set_visible(False)
+                continue
             
             if show_runtimes == False and current.is_runtime == True:
-                visible = False
+                current.set_visible(False)
+                continue
 
             if (not 'all' in filter_install_type):
                 if not current.install_type in filter_install_type:
-                    visible = False
+                    current.set_visible(False)
+                    continue
 
             if (not 'all' in filter_remotes_list):
                 if not current.origin_remote in filter_remotes_list:
-                    visible = False
+                    current.set_visible(False)
+                    continue
 
             if (not 'all' in filter_runtimes_list):
                 if not current.dependent_runtime in filter_runtimes_list:
-                    visible = False
+                    current.set_visible(False)
+                    continue
             
-            if visible == True:
-                total_visible += 1
-            
-            current.set_visible(visible)
-            index += 1
-        
-        if total_visible == 0:
-            self.main_stack.set_visible_child(self.no_matches)
-        else:
-            self.main_stack.set_visible_child(self.main_box)
-
-            # self.flatpak_rows[i][0] = True
-
-            # if (not show_apps) and (not "runtime" in self.flatpak_rows[i][6][12]):
-            #     self.flatpak_rows[i][0] = False
-
-            # if (not show_runtimes) and "runtime" in self.flatpak_rows[i][6][12]:
-            #     self.flatpak_rows[i][0] = False
-
-            # if (not 'all' in filter_install_type) and (not self.flatpak_rows[i][6][7] in filter_install_type):
-            #     self.flatpak_rows[i][0] = False
-
-            # if (not 'all' in filter_remotes_list) and (not self.flatpak_rows[i][6][6] in filter_remotes_list):
-            #     self.flatpak_rows[i][0] = False
-
-            # if (not 'all' in filter_runtimes_list) and (not self.flatpak_rows[i][6][13] in filter_runtimes_list):
-            #     self.flatpak_rows[i][0] = False
-
-            # self.flatpak_rows[i][2].set_visible(self.flatpak_rows[i][0])
-
-            # if self.flatpak_rows[i][0]:
-            #     total_visible += 1
-
-        # if total_visible > 0:
-        #     self.windowSetEmpty(False)
-        # else:
-        #     self.windowSetEmpty(True)
-        #     self.filter_button.set_sensitive(True)
+            total_visible += 1
+            current.set_visible(True)
 
     def installCallback(self, _a, _b):
         self.main_stack.set_visible_child(self.main_box)
@@ -710,6 +693,7 @@ class WarehouseWindow(Adw.ApplicationWindow):
         
         task = Gio.Task()
         task.run_in_thread(lambda *_: GLib.idle_add(lambda *_: self.generate_list_of_flatpaks()))
+        self.main_stack.set_visible_child(self.main_box)
         
         self.search_entry.connect("search-changed", self.on_invalidate)
         self.search_bar.connect_entry(self.search_entry)

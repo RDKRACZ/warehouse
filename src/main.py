@@ -25,7 +25,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Gtk, Gio, Adw, GLib
+from gi.repository import Gtk, Gio, Adw, GLib, GObject
 from .window import WarehouseWindow
 from .remotes_window import RemotesWindow
 from .orphans_window import OrphansWindow
@@ -37,6 +37,7 @@ class WarehouseApplication(Adw.Application):
 
     troubleshooting = "OS: {os}\nWarehouse version: {wv}\nGTK: {gtk}\nlibadwaita: {adw}\nApp ID: {app_id}\nProfile: {profile}\nLanguage: {lang}"
     version = Config.VERSION
+    GObject.threads_init()
 
     def __init__(self):
         super().__init__(
